@@ -7,15 +7,63 @@ on:
   workflow_dispatch:
     
 jobs:
-  Spec:
-    uses: "puppetlabs/cat-github-actions/.github/workflows/module_ci.yml@main"
-    with:
-      runs_on: "ubuntu-20.04"
-    secrets: "inherit"
+  # Spec:
+  #   uses: "puppetlabs/cat-github-actions/.github/workflows/module_ci.yml@main"
+  #   with:
+  #     runs_on: "ubuntu-20.04"
+  #   secrets: "inherit"
 
+  # Acceptance:
+  #   # needs: Spec
+  #   runs-on: ubuntu-20.04
   Acceptance:
-    needs: Spec
-    uses: "puppetlabs/cat-github-actions/.github/workflows/module_acceptance.yml@main"
-    with:
-      runs_on: "ubuntu-20.04"
-    secrets: "inherit"
+    name: "Acceptance tests (centos:8 puppet7)"
+    runs-on: ubuntu-20.04
+
+    env:
+      PUPPET_GEM_VERSION: '~> 7.24'
+      FACTER_GEM_VERSION: 'https://github.com/puppetlabs/facter#main'  # why is this set?
+
+    steps:
+
+      - name: "Checkout"
+        uses: "actions/checkout@v3"
+
+      - name: "Setup ruby"
+        uses: "ruby/setup-ruby@v1"
+        with:
+          ruby-version: "2.7"
+          bundler-cache: true
+
+      - name: "Bundle environment"
+        run: |
+          echo ::group::bundler environment
+          bundle env
+          echo ::endgroup::
+
+      - name: "Provision environment"
+        run: |
+          bundle exec rake "litmus:provision[docker,litmusimage/centos:8]"
+          # Redact password
+          FILE='spec/fixtures/litmus_inventory.yaml'
+          sed -e 's/password: .*/password: "[redacted]"/' < $FILE || true
+
+      - name: "Install Puppet agent"
+        run: |
+          bundle exec rake 'litmus:install_agent[puppet7]'
+
+      - name: "Install module"
+        run: |
+          bundle exec rake 'litmus:install_module'
+
+      - name: "Run acceptance tests"
+        run: |
+          bundle exec rake 'litmus:acceptance:parallel'
+
+      - name: "Remove test environment"
+        if: ${{ always() }}
+        continue-on-error: true
+        run: |
+          if [[ -f spec/fixtures/litmus_inventory.yaml ]]; then
+            bundle exec rake 'litmus:tear_down'
+          fi

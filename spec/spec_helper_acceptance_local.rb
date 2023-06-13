@@ -71,7 +71,7 @@ end
 
 def psql(psql_cmd, user = 'postgres', exit_codes = [0, 1], &block)
   psql = "psql #{psql_cmd}"
-  LitmusHelper.instance.run_shell("cd /tmp; su #{shellescape(user)} -c #{shellescape(psql)}", acceptable_exit_codes: exit_codes, &block)
+  LitmusHelper.instance.run_shell("cd /tmp; su #{shellescape(user)} -c $'#{psql.dup.gsub!(%r{'}, '\'')}'", acceptable_exit_codes: exit_codes, &block)
 end
 
 def shellescape(str)
